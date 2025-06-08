@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Access Portal</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(45deg, #1a1a1a, #2d1f3d);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 400px;
+            width: 100%;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+            background: linear-gradient(90deg, #fff, #a088ff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #a088ff;
+            box-shadow: 0 0 0 2px rgba(160, 136, 255, 0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(90deg, #7c5cff, #a088ff);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(124, 92, 255, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        #qrCode {
+            display: flex;
+            justify-content: center;
+            margin: 1rem 0;
+        }
+
+        .password-display {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WiFi Access Portal</h1>
+        
+        <!-- Step 1: Registration Form -->
+        <div id="step1" class="step active">
+            <form id="registrationForm">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" id="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="tel" id="phone" required pattern="[0-9]+" title="Please enter numbers only">
+                </div>
+                <button type="submit">Continue</button>
+            </form>
+        </div>
+
+        <!-- Step 2: OTP Verification -->
+        <div id="step2" class="step">
+            <div class="form-group">
+                <label for="otp">Enter OTP</label>
+                <input type="text" id="otp" maxlength="6" pattern="[0-9]+" required>
+            </div>
+            <button onclick="verifyOTP()">Verify OTP</button>
+        </div>
+
+        <!-- Step 3: QR Code and Password -->
+        <div id="step3" class="step">
+            <div id="qrCode"></div>
+            <div class="password-display">
+                Password: <span id="wifiPassword">WIFI123456</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Supabase Client
+        const { createClient } = supabase;
+        const supabaseClient = createClient(
+            'https://esmgnjaithzxlbctbrol.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzbWduamFpdGh6eGxiY3Ricm9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkzODg2NzMsImV4cCI6MjA2NDk2NDY3M30.OZe-tSvW_higQRFGkuuMlzJS_yY-r3GCc_lsAZc2TYM'
+        );
+
+        let currentOTP = '';
+        let userData = {};
+
+        // Show specific step and hide others
+        function showStep(stepNumber) {
+            document.querySelectorAll('.step').forEach(step => step.classList.remove('active'));
+            document.getElementById(`step${stepNumber}`).classList.add('active');
+        }
+
+        // Generate random 6-digit OTP
+        function generateOTP() {
+            return Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        // Mock SMS sending (placeholder function)
+        async function sendSMS(phoneNumber, message) {
+            console.log(`SMS would be sent to ${phoneNumber}: ${message}`);
+            // In real implementation, integrate with SMS API like Textbelt
+            return true;
+        }
+
+        // Handle form submission
+        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('name').value;
+            const phone = document.getElementById('phone').value;
+            
+            // Generate OTP
+            currentOTP = generateOTP();
+            userData = { 
+                name, 
+                phone, 
+                created_at: new Date().toISOString() 
+            };
+
+            try {
+                // Save to Supabase
+                const { data, error } = await supabaseClient
+                    .from('users')
+                    .insert([userData]);
+
+                if (error) {
+                    console.error('Supabase error:', error);
+                    throw error;
+                }
+                
+                console.log('Data saved successfully:', data);
+
+                // Send OTP via SMS (mock)
+                await sendSMS(phone, `Your OTP is: ${currentOTP}`);
+                
+                // Show OTP input
+                showStep(2);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+
+        // Verify OTP
+        async function verifyOTP() {
+            const enteredOTP = document.getElementById('otp').value;
+            
+            if (enteredOTP === currentOTP) {
+                // Generate QR code
+                const wifiPassword = document.getElementById('wifiPassword').textContent;
+                const qr = qrcode(0, 'M');
+                qr.addData(`WIFI:T:WPA;S:MyWiFiNetwork;P:${wifiPassword};;`);
+                qr.make();
+                
+                document.getElementById('qrCode').innerHTML = qr.createImgTag(5);
+                showStep(3);
+            } else {
+                alert('Invalid OTP. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>
